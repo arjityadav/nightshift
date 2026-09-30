@@ -16,6 +16,7 @@ dev = [
 [tool.ruff]
 line-length = 110
 target-version = "py312"
+extend-exclude = ["docs"]
 
 [tool.ruff.lint]
 select = ["E", "F", "I", "B", "UP"]   # pycodestyle, pyflakes, import sorting, bugbear, pyupgrade

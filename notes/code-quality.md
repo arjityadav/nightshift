@@ -31,6 +31,8 @@ add(2)  # [1, 2]  ← shared list
 - A hook that **fixes** files (end-of-file-fixer, trailing-whitespace, ruff --fix) reports "Failed" → review `git diff`, `git add`, commit again.
 - `pre-commit autoupdate` bumps `rev:` versions; `pre-commit run --all-files` runs everything once.
 - YAML indents with **spaces** (Makefile needs **tabs**).
+- Gotcha: `ruff format` also formats **Python code blocks inside Markdown**. Exclude folders you don't own (course docs) with `extend-exclude = ["docs"]` under `[tool.ruff]`; undo unwanted changes with `git restore <path>`.
+- Hook id `ruff` is a legacy alias; the current id is `ruff-check`.
 
 ## Interview questions
 
