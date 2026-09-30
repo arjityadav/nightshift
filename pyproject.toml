@@ -12,3 +12,17 @@ dev = [
     "pyyaml>=6.0.3",
     "ruff>=0.16.9",
 ]
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP"]   # pycodestyle, pyflakes, import sorting, bugbear, pyupgrade
+
+[tool.ruff.lint.isort]
+known-first-party = ["tinyshop", "tests"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["postgres: needs a running PostgreSQL (TEST_DATABASE_URL)"]
