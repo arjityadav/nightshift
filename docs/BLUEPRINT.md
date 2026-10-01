@@ -40,7 +40,7 @@ flowchart LR
     end
     subgraph obs[namespace: monitoring]
       PROM[Prometheus] --> AM[Alertmanager]
-      LOKI[Loki] 
+      LOKI[Loki]
       GRAF[Grafana]
     end
     subgraph ns[namespace: nightshift]
