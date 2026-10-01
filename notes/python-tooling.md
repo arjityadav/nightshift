@@ -16,6 +16,14 @@
 - Without `__init__.py`, Python 3.3+ treats a folder as a *namespace package*; we still add one for explicitness and tooling.
 - `__version__ = "0.1.0"` → semantic versioning MAJOR.MINOR.PATCH.
 
+## Python gotchas (from the money module)
+- **Never use float for money:** `0.1 + 0.2 != 0.3`; floats have ~15–16 significant digits, so `f"{(10**17 + 1) / 100:.2f}"` loses a cent. Use integer cents (or `Decimal`).
+- `/` always returns a float; `//` and `%` (or `divmod`) stay integers. Python ints never lose precision.
+- `str.split()` **always returns a list**, even without the separator: `"ab".split("-") == ["ab"]`.
+- **One variable, one type:** if a variable is sometimes a str and sometimes a list, `len()` and indexing mean different things → bugs like `"57"` → 507.
+- `"5".ljust(2, "0") == "50"` → the fraction `"5"` in `"0.5"` is 50 cents.
+- **Green tests ≠ correct code:** tests only check the cases they list; review edge cases yourself.
+
 ## Commands
 ```bash
 uv init --bare --name nightshift --python 3.12
@@ -40,6 +48,11 @@ An isolated per-project Python with its own installed packages, so projects with
 **What does `__init__.py` do?**
 <details><summary>Answer</summary>
 Makes a folder a regular package; runs once on first import and defines the package's top-level names; does not import submodules automatically.
+</details>
+
+**Why is floating point wrong for money? What do you use instead?**
+<details><summary>Answer</summary>
+Binary floats can't represent most decimals exactly and have limited precision, so rounding errors accumulate and large amounts lose cents. Use integer minor units (cents) or `Decimal`, and never convert through float.
 </details>
 
 **Why separate dev dependencies?**
