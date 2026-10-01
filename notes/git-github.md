@@ -24,6 +24,13 @@ git commit --amend                       # rewrite last commit (needs force push
 git reset --hard HEAD~1                  # drop last local commit (destructive!)
 ```
 
+## Divergent branches
+- `git pull` = `git fetch` + combine. If local and remote **both** have commits the other lacks, they've *diverged*; Git asks: merge or rebase?
+- My case: an empty `test protection` commit left on local `main` + the squash-merged PR on GitHub.
+- Fix when the local commits are junk: check `git log origin/main..main` (local-only commits), then `git reset --hard origin/main`.
+- Prevent: `git config --global pull.ff only` → pull only fast-forwards, fails loudly on divergence. Fits "never commit to main".
+- `git fetch --prune` removes stale refs to remote branches that were deleted (e.g. after `--delete-branch`).
+
 ## Commit messages
 - Imperative, short (~50 chars), no period: `Configure ruff and pytest`, not `Added stuff` or a list of the diff.
 - Blank line + body if the *why* isn't obvious.
@@ -55,6 +62,11 @@ Squash: one clean commit per feature on main, easy to read and revert; you lose 
 **Why is force-pushing to main dangerous?**
 <details><summary>Answer</summary>
 It rewrites shared history: commits others already pulled disappear, work can be lost, and deployed commits may no longer exist. Block it with branch protection.
+</details>
+
+**`git pull` says "divergent branches". What does it mean and what do you do?**
+<details><summary>Answer</summary>
+Local and remote each have commits the other doesn't. Look at both sides (`git log origin/main..main` and `main..origin/main`). If local commits matter: rebase them onto the remote (or merge). If they're junk: `git reset --hard origin/main`. On main, use `pull.ff only` so this never silently creates merge commits.
 </details>
 
 **Why is branch protection a server-side rule and not a local hook?**
