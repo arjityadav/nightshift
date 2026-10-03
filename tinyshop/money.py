@@ -21,8 +21,8 @@ def to_cents(amount: str) -> int:
         cents = int(amount[1].ljust(2, "0"))  # Ensure two digits for cents
     else:
         raise ValueError("Amount must be in the format 'X.YY' or 'X'")
-    if euros < 0 or cents < 0 or cents >= 100:
-        raise ValueError("Euros and cents must be non-negative, and cents must be less than 100")
+    if cents >= 100:
+        raise ValueError("Cents must be less than 100")
 
     return euros * 100 + cents
 
