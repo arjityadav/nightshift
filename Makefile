@@ -12,8 +12,8 @@ lint:               ## check style and bugs
 	uv run ruff format --check .
 
 fmt:                ## fix what can be fixed automatically
-	uv run ruff check --fix .
-	uv run ruff format .
+      uv run ruff format .
+      uv run ruff check --fix .
 
 check:              ## one module's tests: make check M=01
 	uv run pytest -q tests/test_m$(M)_*.py

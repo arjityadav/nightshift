@@ -35,6 +35,11 @@ Exception
 One unambiguous reference time across servers and regions; aware datetimes can be compared and converted safely; naive ones are ambiguous and Python refuses to compare naive with aware. Convert to local time only for display.
 </details>
 
+**Why does `OrderItem` store `unit_price_cents` instead of looking up the product's price?**
+<details><summary>Answer</summary>
+Prices change and products can be deleted. An order is a historical record (snapshot) of what the customer actually paid; it must not change for history, invoices, refunds and revenue reports. A deliberate exception to "don't duplicate data". The repository copies `price_cents` into the order item when creating the order.
+</details>
+
 **Why use `default_factory` instead of `default` for a timestamp or list?**
 <details><summary>Answer</summary>
 `default` is evaluated once at class definition, so every instance shares the same value (same timestamp, same list). `default_factory` calls a function for each new instance.
