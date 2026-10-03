@@ -91,7 +91,7 @@ class InMemoryRepository:
             raise NotFoundError(f"Order with id {order_id} not found")
         if order.status == "cancelled":
             raise ConflictError(f"Order with id {order_id} is already cancelled")
-        order.status = "cancelled"
+
         for item in order.items:
             product = self.products.get(item.product_id)
             self.products[product.id] = product.model_copy(update={"stock": product.stock + item.quantity})
