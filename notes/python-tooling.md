@@ -4,6 +4,8 @@
 - **uv** manages the Python version, the virtual environment (`.venv/`) and dependencies.
 - **`pyproject.toml`** = what I *want* (ranges like `pytest>=9.1.1`). **`uv.lock`** = what I *got* (exact versions of everything incl. sub-dependencies, with hashes). Commit both.
 - **`[dependency-groups] dev`** = tools needed to develop/test (pytest, ruff, pre-commit), not to run the app. Production images install without them → smaller, fewer vulnerable packages.
+- **Runtime vs dev:** "does the running app need it?" yes → `dependencies` (`uv add fastapi`); only for testing/tooling → `dev` group (`uv add --dev pytest`). Docker installs only runtime deps.
+- **Extras:** `package[extra]` installs optional additional packages. `uvicorn[standard]` adds uvloop + httptools (speed), watchfiles (`--reload`), websockets, python-dotenv, pyyaml. Same pattern: `psycopg[binary]`.
 - **`[tool.<name>]`** tables: one file configures many tools; each tool reads only its own table.
 - **`uv run X`** runs X inside the project venv; no need to activate it.
 - **Virtual environment:** per-project Python with its own packages, so projects don't break each other.
