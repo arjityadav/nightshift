@@ -42,3 +42,8 @@ class Order(BaseModel):
     total_cents: int = Field(gt=0)
     status: Literal["created", "cancelled"]
     created_at: datetime
+
+
+class TopProductStats(BaseModel):
+    sku: str
+    revenue_cents: int = Field(gt=0)

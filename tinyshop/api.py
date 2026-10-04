@@ -5,7 +5,7 @@ from fastapi.responses import JSONResponse
 
 from tinyshop import __version__
 from tinyshop.errors import ConflictError, NotFoundError, OutOfStockError
-from tinyshop.models import Order, OrderIn, Product, ProductIn
+from tinyshop.models import Order, OrderIn, Product, ProductIn, TopProductStats
 from tinyshop.repository import Repository
 
 
@@ -32,7 +32,7 @@ def create_app(repo: Repository) -> FastAPI:
     @app.get("/health")
     def health():
         """Health check endpoint."""
-        return JSONResponse(status_code=200, content={"status": "ok", "version": __version__})
+        return {"status": "ok", "version": __version__}
 
     @app.get("/ready")
     def ready():
@@ -44,28 +44,26 @@ def create_app(repo: Repository) -> FastAPI:
         return JSONResponse(status_code=200, content={"status": "ready"})
 
     @app.post("/products", status_code=201)
-    def create_product(product: ProductIn):
+    def create_product(product: ProductIn) -> Product:
         """Create a new product."""
-        product = repo.add_product(product)
-        return product.model_dump()
+        return repo.add_product(product)
 
     @app.get("/products")
     def get_products(
         limit: Annotated[int, Query(ge=1, le=100)] = 50, offset: Annotated[int, Query(ge=0)] = 0
-    ):
+    ) -> list[Product]:
         """Get a list of products."""
         return repo.list_products(limit, offset)
 
     @app.get("/products/{product_id}")
     def get_product(product_id: int) -> Product:
         """Get a product by ID."""
-        return repo.get_product(product_id).model_dump()
+        return repo.get_product(product_id)
 
     @app.post("/orders", status_code=201)
     def create_order(order: OrderIn) -> Order:
         """Create a new order."""
-        order = repo.place_order(order)
-        return order.model_dump()
+        return repo.place_order(order)
 
     @app.get("/orders/{order_id}")
     def get_order(order_id: int) -> Order:
@@ -73,14 +71,14 @@ def create_app(repo: Repository) -> FastAPI:
         return repo.get_order(order_id)
 
     @app.post("/orders/{order_id}/cancel")
-    def cancel_order(order_id: int):
+    def cancel_order(order_id: int) -> Order:
         """Cancel an order."""
         return repo.cancel_order(order_id)
 
     @app.get("/stats/top-products")
-    def get_top_products_stats(limit: Annotated[int, Query(ge=1, le=50)] = 5):
+    def get_top_products_stats(limit: Annotated[int, Query(ge=1, le=50)] = 5) -> list[TopProductStats]:
         """Get statistics for top products by revenue."""
-        top_prod = repo.top_products(limit)
-        return [{"sku": sku, "revenue_cents": revenue} for sku, revenue in top_prod]
+        rows = repo.top_products(limit)
+        return [TopProductStats(sku=sku, revenue_cents=revenue) for sku, revenue in rows]
 
     return app
