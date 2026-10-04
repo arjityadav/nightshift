@@ -1,6 +1,6 @@
 from typing import Annotated
 
-from fastapi import FastAPI, Query, Request
+from fastapi import Depends, FastAPI, Query, Request
 from fastapi.responses import JSONResponse
 
 from tinyshop import __version__
@@ -11,6 +11,9 @@ from tinyshop.repository import Repository
 
 def get_shop(request: Request) -> Repository:
     return request.app.state.store
+
+
+RepoDep = Annotated[Repository, Depends(get_shop)]
 
 
 def create_app(repo: Repository) -> FastAPI:
@@ -35,7 +38,7 @@ def create_app(repo: Repository) -> FastAPI:
         return {"status": "ok", "version": __version__}
 
     @app.get("/ready")
-    def ready():
+    def ready(repo: RepoDep):
         """Ready check endpoint."""
         try:
             repo.ping()
@@ -44,39 +47,43 @@ def create_app(repo: Repository) -> FastAPI:
         return JSONResponse(status_code=200, content={"status": "ready"})
 
     @app.post("/products", status_code=201)
-    def create_product(product: ProductIn) -> Product:
+    def create_product(repo: RepoDep, product: ProductIn) -> Product:
         """Create a new product."""
         return repo.add_product(product)
 
     @app.get("/products")
     def get_products(
-        limit: Annotated[int, Query(ge=1, le=100)] = 50, offset: Annotated[int, Query(ge=0)] = 0
+        repo: RepoDep,
+        limit: Annotated[int, Query(ge=1, le=100)] = 50,
+        offset: Annotated[int, Query(ge=0)] = 0,
     ) -> list[Product]:
         """Get a list of products."""
         return repo.list_products(limit, offset)
 
     @app.get("/products/{product_id}")
-    def get_product(product_id: int) -> Product:
+    def get_product(repo: RepoDep, product_id: int) -> Product:
         """Get a product by ID."""
         return repo.get_product(product_id)
 
     @app.post("/orders", status_code=201)
-    def create_order(order: OrderIn) -> Order:
+    def create_order(repo: RepoDep, order: OrderIn) -> Order:
         """Create a new order."""
         return repo.place_order(order)
 
     @app.get("/orders/{order_id}")
-    def get_order(order_id: int) -> Order:
+    def get_order(repo: RepoDep, order_id: int) -> Order:
         """Get an order by ID."""
         return repo.get_order(order_id)
 
     @app.post("/orders/{order_id}/cancel")
-    def cancel_order(order_id: int) -> Order:
+    def cancel_order(repo: RepoDep, order_id: int) -> Order:
         """Cancel an order."""
         return repo.cancel_order(order_id)
 
     @app.get("/stats/top-products")
-    def get_top_products_stats(limit: Annotated[int, Query(ge=1, le=50)] = 5) -> list[TopProductStats]:
+    def get_top_products_stats(
+        repo: RepoDep, limit: Annotated[int, Query(ge=1, le=50)] = 5
+    ) -> list[TopProductStats]:
         """Get statistics for top products by revenue."""
         rows = repo.top_products(limit)
         return [TopProductStats(sku=sku, revenue_cents=revenue) for sku, revenue in rows]
