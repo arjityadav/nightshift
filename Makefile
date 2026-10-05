@@ -1,4 +1,4 @@
-.PHONY: install test lint fmt check run
+.PHONY: install test lint fmt check run up down db
 
 install:            ## install dependencies and git hooks
 	uv sync
@@ -20,3 +20,12 @@ check:              ## one module's tests: make check M=01
 
 run:                ## start TinyShop with auto-reload (from M1)
 	uv run uvicorn tinyshop.main:app --reload
+
+up:                 ## start the stack in the background
+	docker compose up -d --build
+
+down:               ## stop the stack (keeps data)
+	docker compose down
+
+db:                 ## start only the database
+	docker compose up -d db

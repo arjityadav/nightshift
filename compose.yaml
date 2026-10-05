@@ -1,0 +1,32 @@
+services:
+  api:
+    build: .                       # build the Dockerfile in this folder
+    ports:
+      - "8000:8000"                # host:container
+    environment:
+      # the host is `db`: the service name below. The app starts using this in M3.
+      DATABASE_URL: postgresql://tinyshop:${POSTGRES_PASSWORD:-tinyshop}@db:5432/tinyshop
+    depends_on:
+      db:
+        condition: service_healthy # wait until the db healthcheck passes, not just "started"
+    restart: unless-stopped
+
+  db:
+    image: postgres:16             # official image, pinned major version
+    environment:
+      POSTGRES_USER: tinyshop
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-tinyshop}   # from .env or your shell; default for local dev
+      POSTGRES_DB: tinyshop
+    ports:
+      - "5432:5432"                # so tools on your laptop (psql, tests) can connect
+    volumes:
+      - pgdata:/var/lib/postgresql/data                                  # named volume: data survives restarts
+      - ./deploy/postgres/init.sql:/docker-entrypoint-initdb.d/init.sql:ro  # bind mount, read-only
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U tinyshop -d tinyshop"]
+      interval: 5s
+      timeout: 3s
+      retries: 10
+
+volumes:
+  pgdata:
