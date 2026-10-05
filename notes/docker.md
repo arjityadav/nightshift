@@ -27,6 +27,11 @@ docker stop web && docker rm web
 docker run -it --rm python:3.12-slim python   # --rm deletes the container on exit
 ```
 
+## Errors I hit
+- **`Bind for 0.0.0.0:5432 failed: port is already allocated`** → another process (here another project's Postgres container) already listens on that **host** port. Only one process per host port; container ports never clash (each container has its own network).
+  - Find it: `docker ps --format '{{.Names}}\t{{.Ports}}'` or `lsof -nP -iTCP:5432 -sTCP:LISTEN`.
+  - Fix: stop the other container (`docker stop <name>`, data in volumes stays), or change only the host side (`"5433:5432"`).
+
 ## Interview questions
 
 **What's the difference between an image and a container?**
