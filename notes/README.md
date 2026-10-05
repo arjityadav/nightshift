@@ -12,7 +12,7 @@ Answers are folded under each question: try to answer out loud first, then open 
 | Make | [make.md](make.md) | M0 |
 | Security & secrets | [security.md](security.md) | M0 → |
 | FastAPI / HTTP APIs | [fastapi.md](fastapi.md) | M1 |
-| Docker | *coming* | M2 |
+| Docker | [docker.md](docker.md) | M2 |
 | SQL & PostgreSQL | *coming* | M3 |
 | Kubernetes, Helm | *coming* | later |
 | CI/CD & GitOps (GitHub Actions, Argo CD) | *coming* | later |
