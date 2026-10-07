@@ -13,7 +13,7 @@ Answers are folded under each question: try to answer out loud first, then open 
 | Security & secrets | [security.md](security.md) | M0 → |
 | FastAPI / HTTP APIs | [fastapi.md](fastapi.md) | M1 |
 | Docker | [docker.md](docker.md) | M2 |
-| SQL & PostgreSQL | *coming* | M3 |
+| SQL & PostgreSQL | [sql-postgres.md](sql-postgres.md) | M3 |
 | Kubernetes, Helm | *coming* | later |
 | CI/CD & GitOps (GitHub Actions, Argo CD) | *coming* | later |
 | Observability (Prometheus, Grafana, Loki) | *coming* | later |
