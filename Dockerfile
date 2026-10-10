@@ -11,6 +11,7 @@ COPY pyproject.toml uv.lock ./
 RUN uv sync --frozen --no-dev --no-install-project
 # 3) your code last: it changes most often
 COPY tinyshop ./tinyshop
+COPY migrations ./migrations
 
 # ---- runtime stage: small image, non-root user ----
 FROM python:3.12-slim
