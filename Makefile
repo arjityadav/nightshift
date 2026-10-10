@@ -1,4 +1,4 @@
-.PHONY: install test lint fmt check run up down db
+.PHONY: install test lint fmt check run up down db test-db
 
 install:            ## install dependencies and git hooks
 	uv sync
@@ -29,3 +29,6 @@ down:               ## stop the stack (keeps data)
 
 db:                 ## start only the database
 	docker compose up -d db
+
+test-db:            ## PostgreSQL tests against the tinyshop_test database (make db first)
+	TEST_DATABASE_URL=postgresql://tinyshop:tinyshop@localhost:5432/tinyshop_test uv run pytest -q -m postgres
