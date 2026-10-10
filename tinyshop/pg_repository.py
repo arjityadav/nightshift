@@ -100,55 +100,93 @@ class PostgresRepository:
                 ]
                 return Order(**order_row, items=items)
 
+    def _load_order(self, conn: psycopg.Connection, order_id: int) -> Order:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                SELECT id, status, total_cents, created_at
+                FROM orders
+                WHERE id = %s
+                """,
+                (order_id,),
+            )
+            order_row = cur.fetchone()
+            if order_row is None:
+                raise NotFoundError(f"Order with ID {order_id} not found")
+
+            cur.execute(
+                """
+                SELECT product_id, quantity, unit_price_cents
+                FROM order_items
+                WHERE order_id = %s
+                ORDER BY product_id
+                """,
+                (order_id,),
+            )
+            item_rows = cur.fetchall()
+            items = [OrderItem(**r) for r in item_rows]
+            return Order(**order_row, items=items)
+
     def get_order(self, order_id: int) -> Order:
         with self._connect() as conn:
+            return self._load_order(conn, order_id)
+
+    def cancel_order(self, order_id: int) -> Order:
+        with self._connect() as conn, conn.transaction():
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT id, status, total_cents, created_at
+                    SELECT status
                     FROM orders
                     WHERE id = %s
+                    FOR UPDATE
                     """,
                     (order_id,),
                 )
-                row = cur.fetchone()
-                if row is None:
-                    raise ValueError(f"Order with ID {order_id} not found")
-                return Order(**row)
+                order_row = cur.fetchone()
+                if order_row is None:
+                    raise NotFoundError(f"Order with ID {order_id} not found")
+                if order_row["status"] == "cancelled":
+                    raise ConflictError(f"Order with ID {order_id} is already cancelled")
 
-    def cancel_order(self, order_id: int) -> Order:
-        with self._connect() as conn:
-            with conn.cursor() as cur:
+                cur.execute(
+                    """
+                    UPDATE products p
+                    SET stock = p.stock + oi.quantity
+                    FROM order_items oi
+                    WHERE oi.order_id = %s AND oi.product_id = p.id
+                    """,
+                    (order_id,),
+                )
+
                 cur.execute(
                     """
                     UPDATE orders
                     SET status = 'cancelled'
                     WHERE id = %s
-                    RETURNING id, status, total_cents, created_at
                     """,
                     (order_id,),
                 )
-                row = cur.fetchone()
-                if row is None:
-                    raise ValueError(f"Order with ID {order_id} not found")
-                return Order(**row)
+                return self._load_order(conn, order_id)
 
-    def top_products(self, limit: int) -> list[tuple[str, int]]:
+    def top_products(self, limit: int = 5) -> list[tuple[str, int]]:
         with self._connect() as conn:
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    SELECT p.sku, SUM(p.price_cents * o.quantity) AS revenue
-                    FROM products p
-                    JOIN orders o ON p.id = o.product_id
-                    WHERE o.status != 'cancelled'
+                    SELECT p.sku, SUM(oi.quantity * oi.unit_price_cents)::int AS revenue
+                    FROM order_items oi
+                    JOIN orders o   ON o.id = oi.order_id
+                    JOIN products p ON p.id = oi.product_id
+                    WHERE o.status = 'created'
                     GROUP BY p.sku
-                    ORDER BY revenue DESC
+                    ORDER BY revenue DESC, p.sku
                     LIMIT %s
                     """,
                     (limit,),
                 )
-                return cur.fetchall()
+                rows = cur.fetchall()
+                return [(r["sku"], r["revenue"]) for r in rows]
 
     def ping(self) -> None:
         with self._connect() as conn:
