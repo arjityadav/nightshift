@@ -1,7 +1,7 @@
 import psycopg
 
 from tinyshop.errors import ConflictError, NotFoundError, OutOfStockError
-from tinyshop.models import Order, OrderIn, Product, ProductIn
+from tinyshop.models import Order, OrderIn, OrderItem, Product, ProductIn
 
 
 class PostgresRepository:
@@ -44,21 +44,61 @@ class PostgresRepository:
                     raise NotFoundError(f"Product with ID {product_id} not found")
                 return Product(**row)
 
-    def place_order(self, order: OrderIn) -> Order:
-        with self._connect() as conn:
+    def place_order(self, data: OrderIn) -> Order:
+        wanted = {item.product_id: item.quantity for item in data.items}  # {product_id: quantity}
+
+        with self._connect() as conn, conn.transaction():
             with conn.cursor() as cur:
                 cur.execute(
                     """
-                    INSERT INTO orders (product_id, quantity)
-                    VALUES (%s, %s)
+                    SELECT id, price_cents, stock
+                    FROM products
+                    WHERE id = ANY(%s)
+                    ORDER BY id
+                    FOR UPDATE
+                    """,
+                    (list(wanted),),
+                )
+                rows = cur.fetchall()
+                products = {row["id"]: row for row in rows}
+
+                for product_id, quantity in wanted.items():
+                    if product_id not in products:
+                        raise NotFoundError(f"Product with ID {product_id} not found")
+                    if products[product_id]["stock"] < quantity:
+                        raise OutOfStockError(f"Product with ID {product_id} is out of stock")
+                cur.execute(
+                    """
+                    INSERT INTO orders (total_cents)
+                    VALUES (%s)
                     RETURNING id, status, total_cents, created_at
                     """,
-                    (order.product_id, order.quantity),
+                    (sum(products[pid]["price_cents"] * qty for pid, qty in wanted.items()),),
                 )
-                row = cur.fetchone()
-                if row is None:
-                    raise OutOfStockError(f"Failed to place order for product ID {order.product_id}")
-                return Order(**row)
+                order_row = cur.fetchone()
+
+                for product_id, quantity in wanted.items():
+                    cur.execute(
+                        """
+                        UPDATE products
+                        SET stock = stock - %s
+                        WHERE id = %s
+                        """,
+                        (quantity, product_id),
+                    )
+                    cur.execute(
+                        """
+                        INSERT INTO order_items (order_id, product_id, quantity, unit_price_cents)
+                        VALUES (%s, %s, %s, %s)
+                        """,
+                        (order_row["id"], product_id, quantity, products[product_id]["price_cents"]),
+                    )
+
+                items = [
+                    OrderItem(product_id=pid, quantity=qty, unit_price_cents=products[pid]["price_cents"])
+                    for pid, qty in wanted.items()
+                ]
+                return Order(**order_row, items=items)
 
     def get_order(self, order_id: int) -> Order:
         with self._connect() as conn:
