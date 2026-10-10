@@ -26,6 +26,38 @@
 - Numbered SQL files applied in order, exactly once, recorded in `schema_migrations`.
 - Never edit a migration that already ran somewhere; add a new one. Keep changes backwards-compatible for rolling deploys.
 
+## Schema design (my `001_init.sql`)
+- `order_items` has a **composite primary key** `(order_id, product_id)` and no own id → the DB forbids the same product twice in one order.
+- `ON DELETE CASCADE` only from owner → owned (order → its items). Never on `product_id`: deleting a product must not erase order history (default = block the delete).
+- `DEFAULT 'created'` + `CHECK (status IN (...))` = SQL version of `Literal[...]`. The CHECK caught my `'placed'` typo.
+- Let defaults do their job: insert only `total_cents`, the DB fills `status` and `created_at`.
+
+## Migration runner (`tinyshop/db.py`)
+- Connect with `autocommit=True`; each file + its `INSERT INTO schema_migrations` inside `with conn.transaction():` → they succeed or fail together; earlier files stay applied.
+- Without autocommit, `conn.transaction()` is only a savepoint inside one big transaction.
+- `CREATE TABLE IF NOT EXISTS` → safe to run every startup. `MIGRATIONS_DIR` found relative to `__file__`.
+
+## psycopg 3 (not psycopg2!)
+- `psycopg.connect(dsn, row_factory=dict_row)` → rows as dicts → `Product(**row)`.
+- `%s` + tuple, `%(name)s` + dict; `RETURNING` gives back ids/defaults; `.fetchone()` (dict or None), `.fetchall()`.
+- `with self._connect() as conn, conn.transaction():` = connection + one transaction; any exception rolls back.
+- DB errors are **exceptions**, not `None` return values: catch `psycopg.errors.UniqueViolation` with try/except, `raise ConflictError(...) from None`. The API must not know which database is behind it.
+- Try the insert and catch the violation instead of "check then insert" (that's a race).
+
+## PostgresRepository
+- `place_order`: one transaction; `SELECT ... WHERE id = ANY(%s) ORDER BY id FOR UPDATE`; check all → insert order → update stock + insert items; raising rolls back everything.
+- `cancel_order`: lock the **order** row (`FOR UPDATE`) so two cancels can't restock twice; restock all items in one `UPDATE ... FROM order_items`.
+- `_load_order(conn, ...)` reuses the open connection so it reads inside the caller's transaction.
+- `top_products`: `JOIN` + `GROUP BY` + `SUM(...)::int`, revenue from `unit_price_cents` (price paid), `ORDER BY revenue DESC, sku`.
+- Implementation signatures must match the Protocol exactly, defaults included.
+- Contract tests: the same 14 tests pass for in-memory and Postgres; plus thread-based race tests. Removing `FOR UPDATE` makes the race test fail (sometimes: races are timing-dependent).
+
+## Wiring (`main.py`)
+- `build_repository(env)` receives the environment (testable with a dict): `DATABASE_URL` set and not blank → `migrate(url)` + `PostgresRepository`; else in-memory.
+- Postgres imports inside the function so in-memory mode works without psycopg.
+- Migrations at startup are fine for one instance; with replicas use a separate Job (M6).
+- Green tests ≠ working app: an import bug in the Postgres branch was invisible to all tests → always run the real stack.
+
 ## psql
 ```sql
 \dt            -- list tables
@@ -54,6 +86,26 @@ Data also arrives through scripts, migrations, other services and bugs. Constrai
 **How do you prevent SQL injection?**
 <details><summary>Answer</summary>
 Never concatenate user input into SQL; use parameterised queries so the driver sends values separately from the statement.
+</details>
+
+**What is a deadlock and how do you avoid it?**
+<details><summary>Answer</summary>
+Two transactions each wait for a lock the other holds. Lock rows in a consistent order (ORDER BY id), keep transactions short, and retry when the database aborts one.
+</details>
+
+**How do you change a schema without downtime?**
+<details><summary>Answer</summary>
+Additive, backwards-compatible migrations: add a nullable column, deploy code that writes both, backfill, switch reads, drop the old column later. Each migration runs once per environment and is never edited after it ran.
+</details>
+
+**Why do the same tests run against the in-memory and the PostgreSQL repository?**
+<details><summary>Answer</summary>
+Contract tests prove both implementations behave identically, so the fast in-memory version is a trustworthy stand-in for unit and API tests.
+</details>
+
+**Why should the repository translate database errors into domain errors?**
+<details><summary>Answer</summary>
+The API maps domain errors to status codes and must not depend on the storage technology; otherwise a UniqueViolation becomes a 500 and swapping databases changes the API.
 </details>
 
 **Do foreign keys get an index automatically in PostgreSQL?**
