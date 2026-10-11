@@ -16,7 +16,7 @@ Answers are folded under each question: try to answer out loud first, then open 
 | SQL & PostgreSQL | [sql-postgres.md](sql-postgres.md) | M3 |
 | Kubernetes, Helm | *coming* | later |
 | CI/CD & GitOps (GitHub Actions, Argo CD) | *coming* | later |
-| Observability (Prometheus, Grafana, Loki) | *coming* | later |
+| Observability (Prometheus, Grafana, Loki) | [observability.md](observability.md) | M4 |
 | MLOps (MLflow) | *coming* | later |
 | RAG (pgvector) | *coming* | later |
 | LLMs & agents (LangGraph) | *coming* | later |
