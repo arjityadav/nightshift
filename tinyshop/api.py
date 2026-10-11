@@ -1,3 +1,7 @@
+import logging
+import re
+import time
+import uuid
 from typing import Annotated
 
 from fastapi import Depends, FastAPI, Query, Request
@@ -7,6 +11,10 @@ from tinyshop import __version__
 from tinyshop.errors import ConflictError, NotFoundError, OutOfStockError
 from tinyshop.models import Order, OrderIn, Product, ProductIn, TopProductStats
 from tinyshop.repository import Repository
+
+access_log = logging.getLogger("tinyshop.access")
+
+SAFE_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
 
 
 def get_shop(request: Request) -> Repository:
@@ -19,6 +27,37 @@ RepoDep = Annotated[Repository, Depends(get_shop)]
 def create_app(repo: Repository) -> FastAPI:
     app = FastAPI(title="TinyShop", version=__version__)
     app.state.store = repo
+
+    @app.middleware("http")
+    async def observe(request: Request, call_next):
+        request_id = request.headers.get("X-Request-ID")
+
+        if not request_id or not SAFE_ID.fullmatch(request_id):
+            request_id = uuid.uuid4().hex
+        request.state.request_id = request_id
+
+        start = time.perf_counter()
+
+        response = await call_next(request)
+        route = request.scope.get("route")
+        route_path = getattr(route, "path", "unmatched")
+
+        if request.url.path != "/metrics":
+            duration = time.perf_counter() - start
+            access_log.log(
+                logging.ERROR if response.status_code >= 500 else logging.INFO,
+                "request",
+                extra={
+                    "request_id": request_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "route": route_path,
+                    "status": response.status_code,
+                    "duration_ms": round(duration * 1000, 1),
+                },
+            )
+        response.headers["X-Request-ID"] = request_id
+        return response
 
     @app.exception_handler(NotFoundError)
     async def not_found(request: Request, exc: NotFoundError) -> JSONResponse:
