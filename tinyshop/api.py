@@ -33,6 +33,9 @@ def create_app(repo: Repository) -> FastAPI:
 
     @app.middleware("http")
     async def observe(request: Request, call_next):
+        if request.url.path == "/metrics":
+            return await call_next(request)
+
         request_id = request.headers.get("X-Request-ID")
 
         if not request_id or not SAFE_ID.fullmatch(request_id):
@@ -40,11 +43,14 @@ def create_app(repo: Repository) -> FastAPI:
         request.state.request_id = request_id
 
         start = time.perf_counter()
-
+        metrics.in_progress.inc()
         response = await call_next(request)
+        metrics.in_progress.dec()
+        duration = time.perf_counter() - start
         route = request.scope.get("route")
         route_path = getattr(route, "path", "unmatched")
-
+        metrics.request.labels(request.method, route_path, str(response.status_code)).inc()
+        metrics.duration.labels(request.method, route_path).observe(duration)
         if request.url.path != "/metrics":
             duration = time.perf_counter() - start
             access_log.log(
@@ -116,7 +122,16 @@ def create_app(repo: Repository) -> FastAPI:
     @app.post("/orders", status_code=201)
     def create_order(repo: RepoDep, order: OrderIn) -> Order:
         """Create a new order."""
-        return repo.place_order(order)
+        try:
+            created = repo.place_order(order)
+        except OutOfStockError:
+            metrics.orders.labels("out_of_stock").inc()
+            raise
+        except NotFoundError:
+            metrics.orders.labels("not_found").inc()
+            raise
+        metrics.orders.labels("created").inc()
+        return created
 
     @app.get("/orders/{order_id}")
     def get_order(repo: RepoDep, order_id: int) -> Order:
