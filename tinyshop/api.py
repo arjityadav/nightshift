@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from tinyshop import __version__
+from tinyshop.chaos import Chaos, ChaosConfig, ChaosStatus
 from tinyshop.errors import ConflictError, NotFoundError, OutOfStockError
 from tinyshop.metrics import Metrics
 from tinyshop.models import Order, OrderIn, Product, ProductIn, TopProductStats
@@ -26,9 +27,27 @@ def get_shop(request: Request) -> Repository:
 RepoDep = Annotated[Repository, Depends(get_shop)]
 
 
-def create_app(repo: Repository) -> FastAPI:
+def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
     app = FastAPI(title="TinyShop", version=__version__)
     app.state.store = repo
+    chaos = Chaos()
+    if chaos_enabled:
+
+        @app.get("/chaos")
+        def get_chaos() -> ChaosStatus:
+            return chaos.status()
+
+        @app.put("/chaos")
+        def put_chaos(config: ChaosConfig) -> ChaosStatus:
+            chaos.config = config
+            return chaos.status()
+
+        @app.delete("/chaos")
+        def delete_chaos() -> ChaosStatus:
+            chaos.config = ChaosConfig()
+            chaos.leaked = []
+            return chaos.status()
+
     metrics = Metrics()
 
     @app.middleware("http")
