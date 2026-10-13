@@ -4,11 +4,13 @@ import time
 import uuid
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Query, Request
+from fastapi import Depends, FastAPI, Query, Request, Response
 from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from tinyshop import __version__
 from tinyshop.errors import ConflictError, NotFoundError, OutOfStockError
+from tinyshop.metrics import Metrics
 from tinyshop.models import Order, OrderIn, Product, ProductIn, TopProductStats
 from tinyshop.repository import Repository
 
@@ -27,6 +29,7 @@ RepoDep = Annotated[Repository, Depends(get_shop)]
 def create_app(repo: Repository) -> FastAPI:
     app = FastAPI(title="TinyShop", version=__version__)
     app.state.store = repo
+    metrics = Metrics()
 
     @app.middleware("http")
     async def observe(request: Request, call_next):
@@ -84,6 +87,12 @@ def create_app(repo: Repository) -> FastAPI:
         except Exception:
             return JSONResponse(status_code=503, content={"status": "unavailable"})
         return JSONResponse(status_code=200, content={"status": "ready"})
+
+    @app.get("/metrics")
+    def scrape() -> Response:
+        """Metrics endpoint."""
+        data = generate_latest(metrics.registry)
+        return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
     @app.post("/products", status_code=201)
     def create_product(repo: RepoDep, product: ProductIn) -> Product:
