@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import re
 import time
@@ -63,6 +64,12 @@ def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
 
         start = time.perf_counter()
         metrics.in_progress.inc()
+        OPS_PATHS = ("/health", "/ready", "/metrics", "/chaos")
+        if not request.url.path.startswith(OPS_PATHS):
+            if chaos.config.latency_ms:
+                await asyncio.sleep(chaos.config.latency_ms / 1000)
+            if chaos.config.leak_kb_per_request:
+                chaos.leaked.append(b"x" * (chaos.config.leak_kb_per_request * 1024))
         response = await call_next(request)
         metrics.in_progress.dec()
         duration = time.perf_counter() - start
