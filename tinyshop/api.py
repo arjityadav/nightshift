@@ -19,6 +19,7 @@ from tinyshop.repository import Repository
 access_log = logging.getLogger("tinyshop.access")
 
 SAFE_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
+OPS_PATHS = ("/health", "/ready", "/metrics", "/chaos")
 
 
 def get_shop(request: Request) -> Repository:
@@ -64,7 +65,7 @@ def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
 
         start = time.perf_counter()
         metrics.in_progress.inc()
-        OPS_PATHS = ("/health", "/ready", "/metrics", "/chaos")
+
         if not request.url.path.startswith(OPS_PATHS):
             if chaos.config.latency_ms:
                 await asyncio.sleep(chaos.config.latency_ms / 1000)
