@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import random
 import re
 import time
 import uuid
@@ -10,7 +11,7 @@ from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from tinyshop import __version__
-from tinyshop.chaos import Chaos, ChaosConfig, ChaosStatus
+from tinyshop.chaos import Chaos, ChaosConfig, ChaosError, ChaosStatus
 from tinyshop.errors import ConflictError, NotFoundError, OutOfStockError
 from tinyshop.metrics import Metrics
 from tinyshop.models import Order, OrderIn, Product, ProductIn, TopProductStats
@@ -107,6 +108,10 @@ def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
     async def out_of_stock(request: Request, exc: OutOfStockError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
 
+    @app.exception_handler(ChaosError)
+    async def chaos_error(request: Request, exc: ChaosError) -> JSONResponse:
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
+
     @app.get("/health")
     def health():
         """Health check endpoint."""
@@ -149,6 +154,8 @@ def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
     @app.post("/orders", status_code=201)
     def create_order(repo: RepoDep, order: OrderIn) -> Order:
         """Create a new order."""
+        if random.random() < chaos.config.error_rate:
+            raise ChaosError("chaos: injected error")
         try:
             created = repo.place_order(order)
         except OutOfStockError:

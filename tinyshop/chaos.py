@@ -23,3 +23,7 @@ class Chaos:
     def status(self) -> ChaosStatus:
         leaked_kb = sum(len(b) for b in self.leaked) // 1024
         return ChaosStatus(**self.config.model_dump(), leaked_kb=leaked_kb)
+
+
+class ChaosError(Exception):
+    """Exception raised when chaos is injected."""
