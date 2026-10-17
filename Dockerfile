@@ -25,4 +25,4 @@ EXPOSE 8000
 HEALTHCHECK --interval=10s --timeout=3s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8000/health')"
 # exec form (a JSON list): uvicorn runs as PID 1 and receives the stop signal directly
-CMD ["uvicorn", "tinyshop.main:app", "--host", "0.0.0.0", "--port", "8000"]
+CMD ["uvicorn", "tinyshop.main:app", "--host", "0.0.0.0", "--port", "8000", "--no-access-log"]
