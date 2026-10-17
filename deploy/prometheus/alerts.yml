@@ -1,0 +1,10 @@
+groups:
+  - name: tinyshop
+    rules:
+      - alert: TinyShopDown
+        expr: up{job="tinyshop"} == 0
+        for: 30s
+        labels:
+          severity: page
+        annotations:
+          summary: "Prometheus can't scrape TinyShop"

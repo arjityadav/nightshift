@@ -1,0 +1,11 @@
+global:
+  scrape_interval: 5s # often, so experiments show up fast (production: 15–60 s)
+  evaluation_interval: 5s
+
+rule_files:
+  - alerts.yml
+
+scrape_configs:
+  - job_name: tinyshop
+    static_configs:
+      - targets: ["api:8000"] # the Compose service name, like `db` in M3
