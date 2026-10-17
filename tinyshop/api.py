@@ -1,12 +1,13 @@
 import asyncio
 import logging
+import os
 import random
 import re
 import time
 import uuid
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Query, Request, Response
+from fastapi import BackgroundTasks, Depends, FastAPI, Query, Request, Response
 from fastapi.responses import JSONResponse
 from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
@@ -50,6 +51,12 @@ def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
             chaos.config = ChaosConfig()
             chaos.leaked = []
             return chaos.status()
+
+        @app.post("/chaos/crash", status_code=202)
+        def crash(background_tasks: BackgroundTasks) -> dict:
+            """Exit the process right after responding."""
+            background_tasks.add_task(os._exit, 1)
+            return {"status": "crashing"}
 
     metrics = Metrics()
 
