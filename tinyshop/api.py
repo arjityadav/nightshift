@@ -35,6 +35,15 @@ def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
     app = FastAPI(title="TinyShop", version=__version__)
     app.state.store = repo
     chaos = Chaos()
+    metrics = Metrics()
+
+    def export_chaos() -> None:
+        """Mirror the chaos settings into the tinyshop_chaos gauge."""
+        for name, balue in chaos.config.model_dump().items():
+            metrics.chaos.labels(name).set(value=balue)
+
+    export_chaos()
+
     if chaos_enabled:
 
         @app.get("/chaos")
@@ -44,12 +53,14 @@ def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
         @app.put("/chaos")
         def put_chaos(config: ChaosConfig) -> ChaosStatus:
             chaos.config = config
+            export_chaos()
             return chaos.status()
 
         @app.delete("/chaos")
         def delete_chaos() -> ChaosStatus:
             chaos.config = ChaosConfig()
             chaos.leaked = []
+            export_chaos()
             return chaos.status()
 
         @app.post("/chaos/crash", status_code=202)
@@ -57,8 +68,6 @@ def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
             """Exit the process right after responding."""
             background_tasks.add_task(os._exit, 1)
             return {"status": "crashing"}
-
-    metrics = Metrics()
 
     @app.middleware("http")
     async def observe(request: Request, call_next):
