@@ -21,5 +21,7 @@ def build_repository(env: Mapping[str, str]) -> Repository:
         return InMemoryRepository()
 
 
+CHAOS_ENABLED = os.environ.get("CHAOS_ENABLED", "").lower() in ("1", "true", "yes")
+
 configure_logging(os.environ.get("LOG_LEVEL", "INFO"))
-app = create_app(build_repository(os.environ))
+app = create_app(build_repository(os.environ), chaos_enabled=CHAOS_ENABLED)

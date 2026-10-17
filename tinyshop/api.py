@@ -39,8 +39,8 @@ def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
 
     def export_chaos() -> None:
         """Mirror the chaos settings into the tinyshop_chaos gauge."""
-        for name, balue in chaos.config.model_dump().items():
-            metrics.chaos.labels(name).set(value=balue)
+        for name, value in chaos.config.model_dump().items():
+            metrics.chaos.labels(name).set(value=value)
 
     export_chaos()
 
