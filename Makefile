@@ -1,4 +1,4 @@
-.PHONY: install test lint fmt check run up down db test-db
+.PHONY: install test lint fmt check run up down db test-db load
 
 install:            ## install dependencies and git hooks
 	uv sync
@@ -32,3 +32,6 @@ db:                 ## start only the database
 
 test-db:            ## PostgreSQL tests against the tinyshop_test database (make db first)
 	TEST_DATABASE_URL=postgresql://tinyshop:tinyshop@localhost:5432/tinyshop_test uv run pytest -q -m postgres
+
+load:               ## 2 minutes of traffic: 20 users, 5 new per second
+	uvx locust -f loadtest/locustfile.py --headless -u 20 -r 5 -t 2m --host http://localhost:8000
