@@ -3,6 +3,7 @@ import logging
 import os
 import random
 import re
+import sys
 import time
 import uuid
 from typing import Annotated
@@ -82,35 +83,38 @@ def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
 
         start = time.perf_counter()
         metrics.in_progress.inc()
-
-        if not request.url.path.startswith(OPS_PATHS):
-            if chaos.config.latency_ms:
-                await asyncio.sleep(chaos.config.latency_ms / 1000)
-            if chaos.config.leak_kb_per_request:
-                chaos.leaked.append(b"x" * (chaos.config.leak_kb_per_request * 1024))
-        response = await call_next(request)
-        metrics.in_progress.dec()
-        duration = time.perf_counter() - start
-        route = request.scope.get("route")
-        route_path = getattr(route, "path", "unmatched")
-        metrics.request.labels(request.method, route_path, str(response.status_code)).inc()
-        metrics.duration.labels(request.method, route_path).observe(duration)
-        if request.url.path != "/metrics":
+        status = 500  # stays 500 if the endpoint raises an exception no handler catches
+        try:
+            if not request.url.path.startswith(OPS_PATHS):
+                if chaos.config.latency_ms:
+                    await asyncio.sleep(chaos.config.latency_ms / 1000)
+                if chaos.config.leak_kb_per_request:
+                    chaos.leaked.append(b"x" * (chaos.config.leak_kb_per_request * 1024))
+            response = await call_next(request)
+            status = response.status_code
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            # runs on success AND on an unhandled exception (e.g. the database is down), so
+            # the failure is counted and logged instead of silently skipped
+            metrics.in_progress.dec()
             duration = time.perf_counter() - start
+            route_path = getattr(request.scope.get("route"), "path", "unmatched")
+            metrics.request.labels(request.method, route_path, str(status)).inc()
+            metrics.duration.labels(request.method, route_path).observe(duration)
             access_log.log(
-                logging.ERROR if response.status_code >= 500 else logging.INFO,
+                logging.ERROR if status >= 500 else logging.INFO,
                 "request",
+                exc_info=sys.exc_info()[0] is not None,  # the traceback goes into the JSON "exc" field
                 extra={
                     "request_id": request_id,
                     "method": request.method,
                     "path": request.url.path,
                     "route": route_path,
-                    "status": response.status_code,
+                    "status": status,
                     "duration_ms": round(duration * 1000, 1),
                 },
             )
-        response.headers["X-Request-ID"] = request_id
-        return response
 
     @app.exception_handler(NotFoundError)
     async def not_found(request: Request, exc: NotFoundError) -> JSONResponse:

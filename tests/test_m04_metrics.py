@@ -87,3 +87,23 @@ def test_each_app_has_its_own_registry():
     assert sample(scrape(b), "http_requests_total", route="/health") is None, (
         "give each app its own CollectorRegistry instead of the global default one"
     )
+
+
+class BrokenRepository(InMemoryRepository):
+    """Like a database that went away: every read raises an exception no handler catches."""
+
+    def list_products(self, limit, offset):
+        raise RuntimeError("connection refused")
+
+
+def test_unhandled_errors_are_still_counted_and_logged(caplog):
+    caplog.set_level("INFO", logger="tinyshop.access")
+    client = TestClient(create_app(BrokenRepository()), raise_server_exceptions=False)
+    assert client.get("/products").status_code == 500
+    text = scrape(client)
+    assert sample(text, "http_requests_total", method="GET", route="/products", status="500") == 1, (
+        "count requests whose endpoint raised: put the counting in a `finally`"
+    )
+    assert sample(text, "http_requests_in_progress") == 0, "in_progress.dec() must run even on an exception"
+    errors = [r for r in caplog.records if r.name == "tinyshop.access" and r.status == 500]
+    assert errors and errors[0].exc_info, "log the failed request at ERROR, with the traceback"
