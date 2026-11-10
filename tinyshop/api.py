@@ -1,12 +1,28 @@
+import asyncio
+import logging
+import os
+import random
+import re
+import sys
+import time
+import uuid
 from typing import Annotated
 
-from fastapi import Depends, FastAPI, Query, Request
+from fastapi import BackgroundTasks, Depends, FastAPI, Query, Request, Response
 from fastapi.responses import JSONResponse
+from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from tinyshop import __version__
+from tinyshop.chaos import Chaos, ChaosConfig, ChaosError, ChaosStatus
 from tinyshop.errors import ConflictError, NotFoundError, OutOfStockError
+from tinyshop.metrics import Metrics
 from tinyshop.models import Order, OrderIn, Product, ProductIn, TopProductStats
 from tinyshop.repository import Repository
+
+access_log = logging.getLogger("tinyshop.access")
+
+SAFE_ID = re.compile(r"[A-Za-z0-9-]{1,64}")
+OPS_PATHS = ("/health", "/ready", "/metrics", "/chaos")
 
 
 def get_shop(request: Request) -> Repository:
@@ -16,9 +32,89 @@ def get_shop(request: Request) -> Repository:
 RepoDep = Annotated[Repository, Depends(get_shop)]
 
 
-def create_app(repo: Repository) -> FastAPI:
+def create_app(repo: Repository, *, chaos_enabled: bool = False) -> FastAPI:
     app = FastAPI(title="TinyShop", version=__version__)
     app.state.store = repo
+    chaos = Chaos()
+    metrics = Metrics()
+
+    def export_chaos() -> None:
+        """Mirror the chaos settings into the tinyshop_chaos gauge."""
+        for name, value in chaos.config.model_dump().items():
+            metrics.chaos.labels(name).set(value=value)
+
+    export_chaos()
+
+    if chaos_enabled:
+
+        @app.get("/chaos")
+        def get_chaos() -> ChaosStatus:
+            return chaos.status()
+
+        @app.put("/chaos")
+        def put_chaos(config: ChaosConfig) -> ChaosStatus:
+            chaos.config = config
+            export_chaos()
+            return chaos.status()
+
+        @app.delete("/chaos")
+        def delete_chaos() -> ChaosStatus:
+            chaos.config = ChaosConfig()
+            chaos.leaked = []
+            export_chaos()
+            return chaos.status()
+
+        @app.post("/chaos/crash", status_code=202)
+        def crash(background_tasks: BackgroundTasks) -> dict:
+            """Exit the process right after responding."""
+            background_tasks.add_task(os._exit, 1)
+            return {"status": "crashing"}
+
+    @app.middleware("http")
+    async def observe(request: Request, call_next):
+        if request.url.path == "/metrics":
+            return await call_next(request)
+
+        request_id = request.headers.get("X-Request-ID")
+
+        if not request_id or not SAFE_ID.fullmatch(request_id):
+            request_id = uuid.uuid4().hex
+        request.state.request_id = request_id
+
+        start = time.perf_counter()
+        metrics.in_progress.inc()
+        status = 500  # stays 500 if the endpoint raises an exception no handler catches
+        try:
+            if not request.url.path.startswith(OPS_PATHS):
+                if chaos.config.latency_ms:
+                    await asyncio.sleep(chaos.config.latency_ms / 1000)
+                if chaos.config.leak_kb_per_request:
+                    chaos.leaked.append(b"x" * (chaos.config.leak_kb_per_request * 1024))
+            response = await call_next(request)
+            status = response.status_code
+            response.headers["X-Request-ID"] = request_id
+            return response
+        finally:
+            # runs on success AND on an unhandled exception (e.g. the database is down), so
+            # the failure is counted and logged instead of silently skipped
+            metrics.in_progress.dec()
+            duration = time.perf_counter() - start
+            route_path = getattr(request.scope.get("route"), "path", "unmatched")
+            metrics.request.labels(request.method, route_path, str(status)).inc()
+            metrics.duration.labels(request.method, route_path).observe(duration)
+            access_log.log(
+                logging.ERROR if status >= 500 else logging.INFO,
+                "request",
+                exc_info=sys.exc_info()[0] is not None,  # the traceback goes into the JSON "exc" field
+                extra={
+                    "request_id": request_id,
+                    "method": request.method,
+                    "path": request.url.path,
+                    "route": route_path,
+                    "status": status,
+                    "duration_ms": round(duration * 1000, 1),
+                },
+            )
 
     @app.exception_handler(NotFoundError)
     async def not_found(request: Request, exc: NotFoundError) -> JSONResponse:
@@ -31,6 +127,10 @@ def create_app(repo: Repository) -> FastAPI:
     @app.exception_handler(OutOfStockError)
     async def out_of_stock(request: Request, exc: OutOfStockError) -> JSONResponse:
         return JSONResponse(status_code=409, content={"detail": str(exc)})
+
+    @app.exception_handler(ChaosError)
+    async def chaos_error(request: Request, exc: ChaosError) -> JSONResponse:
+        return JSONResponse(status_code=500, content={"detail": str(exc)})
 
     @app.get("/health")
     def health():
@@ -45,6 +145,12 @@ def create_app(repo: Repository) -> FastAPI:
         except Exception:
             return JSONResponse(status_code=503, content={"status": "unavailable"})
         return JSONResponse(status_code=200, content={"status": "ready"})
+
+    @app.get("/metrics")
+    def scrape() -> Response:
+        """Metrics endpoint."""
+        data = generate_latest(metrics.registry)
+        return Response(content=data, media_type=CONTENT_TYPE_LATEST)
 
     @app.post("/products", status_code=201)
     def create_product(repo: RepoDep, product: ProductIn) -> Product:
@@ -68,7 +174,18 @@ def create_app(repo: Repository) -> FastAPI:
     @app.post("/orders", status_code=201)
     def create_order(repo: RepoDep, order: OrderIn) -> Order:
         """Create a new order."""
-        return repo.place_order(order)
+        if random.random() < chaos.config.error_rate:
+            raise ChaosError("chaos: injected error")
+        try:
+            created = repo.place_order(order)
+        except OutOfStockError:
+            metrics.orders.labels("out_of_stock").inc()
+            raise
+        except NotFoundError:
+            metrics.orders.labels("not_found").inc()
+            raise
+        metrics.orders.labels("created").inc()
+        return created
 
     @app.get("/orders/{order_id}")
     def get_order(repo: RepoDep, order_id: int) -> Order:

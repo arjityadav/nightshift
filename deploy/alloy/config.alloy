@@ -1,0 +1,34 @@
+// Find the containers of this Compose project through the Docker socket.
+discovery.docker "nightshift" {
+  host = "unix:///var/run/docker.sock"
+
+  filter {
+    name   = "label"
+    values = ["com.docker.compose.project=nightshift"]
+  }
+}
+
+// Turn Docker metadata into Loki labels: the Compose service name becomes `service`.
+discovery.relabel "nightshift" {
+  targets = []
+
+  rule {
+    source_labels = ["__meta_docker_container_label_com_docker_compose_service"]
+    target_label  = "service"
+  }
+}
+
+// Read each container's output and forward the lines.
+loki.source.docker "nightshift" {
+  host          = "unix:///var/run/docker.sock"
+  targets       = discovery.docker.nightshift.targets
+  relabel_rules = discovery.relabel.nightshift.rules
+  forward_to    = [loki.write.local.receiver]
+}
+
+// Push to Loki.
+loki.write "local" {
+  endpoint {
+    url = "http://loki:3100/loki/api/v1/push"
+  }
+}
