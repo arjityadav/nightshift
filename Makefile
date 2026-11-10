@@ -33,5 +33,5 @@ db:                 ## start only the database
 test-db:            ## PostgreSQL tests against the tinyshop_test database (make db first)
 	TEST_DATABASE_URL=postgresql://tinyshop:tinyshop@localhost:5432/tinyshop_test uv run pytest -q -m postgres
 
-load:               ## 2 minutes of traffic: 20 users, 5 new per second
-	uvx locust -f loadtest/locustfile.py --headless -u 20 -r 5 -t 2m --host http://localhost:8000
+load:               ## 30 minutes of traffic: 20 users, 5 new per second (Ctrl+C stops early)
+	uvx locust -f loadtest/locustfile.py --headless -u 20 -r 5 -t 30m --host http://localhost:8000
